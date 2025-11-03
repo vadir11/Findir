@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect, useCallback } from "react"
 import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
 
-// --- Tipos y Utils (Mantenidos) ---
+// --- Tipos y Utils ---
 /**
  * @typedef {Object<string, string|number>} Row
  * @typedef {'asc'|'desc'} SortDirection
@@ -59,7 +59,7 @@ const isColumnMostlyNumeric = (data, key) => {
 };
 
 // =====================================================================
-// === LÓGICA DE LA APLICACIÓN (BuscadorContent) =======================
+// === FUNCIÓN DE CONTENIDO PRINCIPAL (BuscadorContent) ================
 // =====================================================================
 
 function BuscadorContent() {
@@ -162,7 +162,6 @@ function BuscadorContent() {
         }
     }, [numericColumns]);
 
-
     // [PIPELINE DE DATOS - FILTROS Y BÚSQUEDA]
     const applyDeterministicFilters = useCallback((rows) => {
         const fkeys = Object.keys(filters || {}).filter(k => filters[k] && (filters[k].value !== undefined && filters[k].value !== "" || filters[k].min !== undefined || filters[k].max !== undefined));
@@ -244,9 +243,7 @@ function BuscadorContent() {
     const loadSheetData = useCallback((wb, sheetName) => {
         const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
         const cols = Object.keys(json[0] || {});
-        setRawData(json);
-        setColumns(cols);
-        setSelectedKeys(cols); setFilters({}); setQuery(""); setPage(1); setSelectedColumnStats(null);
+        setRawData(json); setColumns(cols); setSelectedKeys(cols); setFilters({}); setQuery(""); setPage(1); setSelectedColumnStats(null);
     }, []);
 
     const handleFile = async (file) => {
@@ -397,7 +394,7 @@ function BuscadorContent() {
                                                     <button className="font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-700 transition-colors" onClick={() => handleColumnHeaderClick(col)} title="Clic para Ordenar y Ver Estadísticas de Columna">
                                                         {col} 
                                                         <span className="text-xs">
-                                                            {sortKey === col ? (sortDir === "asc" ? "desc" : "asc") : ""}
+                                                            {sortKey === col ? (sortDir === "asc" ? "▲" : "▼") : ""}
                                                             {selectedColumnStats?.column === col && <span className="text-xs text-yellow-500"> ★</span>} 
                                                         </span>
                                                     </button>
@@ -550,9 +547,7 @@ function LoginGate({ onSuccess }) {
 }
 
 
-// --- Componentes Auxiliares (FileDrop, Modal, Stats Panel) ---
-
-// Componente FileDrop (Auxiliar)
+// --- Componente FileDrop (Auxiliar)
 function FileDrop({ onFile }) {
     const [drag, setDrag] = useState(false);
     const inputRef = useRef(null);
@@ -588,7 +583,8 @@ function FileDrop({ onFile }) {
     );
 }
 
-// Componente: Modal de Detalle de Empresa
+
+// --- 2. Componente: Modal de Detalle de Empresa
 /**
  * @param {{ data: CompanyAggregates, onClose: () => void }} props
  */
