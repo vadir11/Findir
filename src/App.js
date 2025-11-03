@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect, useCallback } from "react"
 import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
 
-// --- Tipos y Utils ---
+// --- Tipos y Utils (Mantenidos) ---
 /**
  * @typedef {Object<string, string|number>} Row
  * @typedef {'asc'|'desc'} SortDirection
@@ -11,7 +11,7 @@ import Fuse from "fuse.js";
  * @typedef {Object<string, FilterConfig>} Filters
  * @typedef {import('xlsx').WorkBook} WorkBook
  * @typedef {{ company: string, totalValue: number, totalWeight: number, isFiltered: boolean }} CompanyAggregates
- * * @typedef {object} NumericStats
+ * @typedef {object} NumericStats
  * @property {string} column
  * @property {boolean} isNumeric
  * @property {number} totalCount
@@ -20,13 +20,13 @@ import Fuse from "fuse.js";
  * @property {number} min
  * @property {number} max
  * @property {number} median
- * * @typedef {object} CategoricalStats
+ * @typedef {object} CategoricalStats
  * @property {string} column
  * @property {boolean} isNumeric
  * @property {number} totalCount
  * @property {number} uniqueCount
  * @property {{ value: string, count: number }[]} topValues
- * * @typedef {NumericStats | CategoricalStats} ColumnStats
+ * @typedef {NumericStats | CategoricalStats} ColumnStats
  */
 
 function downloadCSV(filename, rows) {
@@ -58,9 +58,11 @@ const isColumnMostlyNumeric = (data, key) => {
     return numericCount / sample.length > 0.7; 
 };
 
+// =====================================================================
+// === LÓGICA DE LA APLICACIÓN (BuscadorContent) =======================
+// =====================================================================
 
-// --- Componente principal ---
-export default function ExcelSearchApp() {
+function BuscadorContent() {
     // [ESTADOS Y REFS]
     const [rawData, setRawData] = useState([]);
     const [columns, setColumns] = useState([]);
@@ -80,7 +82,7 @@ export default function ExcelSearchApp() {
     const [selectedCompanyData, setSelectedCompanyData] = useState(null);
 
     /** @type {[ColumnStats | null, React.Dispatch<React.SetStateAction<ColumnStats | null>>]} */
-    const [selectedColumnStats, setSelectedColumnStats] = useState(null); // NUEVO ESTADO PARA ESTADÍSTICAS
+    const [selectedColumnStats, setSelectedColumnStats] = useState(null);
 
     // [DEPENDENCIAS OPTIMIZADAS]
     const numericColumns = useMemo(() => {
@@ -90,9 +92,6 @@ export default function ExcelSearchApp() {
     }, [rawData, columns]);
 
     // [LÓGICA DE AGREGACIÓN DE EMPRESAS]
-    /**
-     * @type {(companyName: string, dataSet: Row[]) => Omit<CompanyAggregates, 'isFiltered'>}
-     */
     const getCompanyAggregates = useCallback((companyName, dataSet) => {
         let totalValue = 0;
         let totalWeight = 0;
@@ -114,17 +113,10 @@ export default function ExcelSearchApp() {
             }
         });
         
-        return {
-            company: companyName,
-            totalValue,
-            totalWeight,
-        };
+        return { company: companyName, totalValue, totalWeight, };
     }, []);
 
-    // [LÓGICA DE ESTADÍSTICAS DE COLUMNA - NUEVA]
-    /**
-     * @type {(colName: string, dataSet: Row[]) => ColumnStats | null}
-     */
+    // [LÓGICA DE ESTADÍSTICAS DE COLUMNA]
     const getVisibleColumnStats = useCallback((colName, dataSet) => {
         if (!dataSet || dataSet.length === 0) return null;
         
@@ -135,9 +127,7 @@ export default function ExcelSearchApp() {
         if (totalCount === 0) return null;
 
         if (isNum) {
-            const numbers = filteredValues
-                .map(v => Number(v))
-                .filter(n => !isNaN(n));
+            const numbers = filteredValues.map(v => Number(v)).filter(n => !isNaN(n));
             
             if (numbers.length === 0) return null;
 
@@ -146,7 +136,6 @@ export default function ExcelSearchApp() {
             const min = Math.min(...numbers);
             const max = Math.max(...numbers);
 
-            // Cálculo de Mediana
             const sortedNumbers = [...numbers].sort((a, b) => a - b);
             let median;
             if (sortedNumbers.length % 2 === 0) {
@@ -156,16 +145,7 @@ export default function ExcelSearchApp() {
                 median = sortedNumbers[Math.floor(sortedNumbers.length / 2)];
             }
 
-            return {
-                column: colName,
-                isNumeric: true,
-                totalCount: numbers.length,
-                sum,
-                avg,
-                min,
-                max,
-                median,
-            };
+            return { column: colName, isNumeric: true, totalCount: numbers.length, sum, avg, min, max, median, };
         } else {
             const counts = {};
             filteredValues.forEach(v => {
@@ -173,28 +153,19 @@ export default function ExcelSearchApp() {
                 counts[key] = (counts[key] || 0) + 1;
             });
 
-            const sortedCounts = Object.entries(counts)
-                .sort(([, countA], [, countB]) => countB - countA);
+            const sortedCounts = Object.entries(counts).sort(([, countA], [, countB]) => countB - countA);
 
             const topValues = sortedCounts.slice(0, 5).map(([value, count]) => ({ value, count }));
             const uniqueCount = sortedCounts.length;
 
-            return {
-                column: colName,
-                isNumeric: false,
-                totalCount,
-                uniqueCount,
-                topValues,
-            };
+            return { column: colName, isNumeric: false, totalCount, uniqueCount, topValues, };
         }
     }, [numericColumns]);
 
 
     // [PIPELINE DE DATOS - FILTROS Y BÚSQUEDA]
     const applyDeterministicFilters = useCallback((rows) => {
-        const fkeys = Object.keys(filters || {}).filter(k => 
-            filters[k] && (filters[k].value !== undefined && filters[k].value !== "" || filters[k].min !== undefined || filters[k].max !== undefined)
-        );
+        const fkeys = Object.keys(filters || {}).filter(k => filters[k] && (filters[k].value !== undefined && filters[k].value !== "" || filters[k].min !== undefined || filters[k].max !== undefined));
         if (!fkeys.length) return rows;
         return rows.filter(r => {
             return fkeys.every(col => {
@@ -254,38 +225,19 @@ export default function ExcelSearchApp() {
     }, [rawData, filters, query, sortKey, sortDir, columns, applyDeterministicFilters, numericColumns]);
 
 
-    // [HANDLER DE CLICK EN ENCABEZADO DE COLUMNA - NUEVO Y COMBINADO]
+    // [HANDLER DE CLICKS]
     const handleColumnHeaderClick = (colName) => {
-        // 1. Lógica de Ordenamiento
-        if (sortKey === colName) {
-            setSortDir(sortDir === "asc" ? "desc" : "asc");
-        } else {
-            setSortKey(colName);
-            setSortDir("asc");
-        }
-        
-        // 2. Lógica de Estadísticas
+        if (sortKey === colName) { setSortDir(sortDir === "asc" ? "desc" : "asc"); } else { setSortKey(colName); setSortDir("asc"); }
         const stats = getVisibleColumnStats(colName, processed);
         setSelectedColumnStats(stats);
     };
 
-    // [HANDLER DE CLICK EN EMPRESA - MANTENIDO DINÁMICO]
     const handleCompanyClick = (companyName) => {
         if (!companyName || companyName.trim() === "") return;
-        
-        // Determinar si hay filtros activos
         const isFiltered = rawData.length !== processed.length || query.trim() !== "";
-        
-        // Elegir el conjunto de datos a analizar
         const dataToAnalyze = isFiltered ? processed : rawData;
-        
-        // Obtener los agregados
         const aggregates = getCompanyAggregates(companyName, dataToAnalyze);
-        
-        setSelectedCompanyData({
-            ...aggregates,
-            isFiltered: isFiltered
-        });
+        setSelectedCompanyData({ ...aggregates, isFiltered: isFiltered });
     };
 
     // [HANDLERS DE CARGA Y UX]
@@ -294,59 +246,30 @@ export default function ExcelSearchApp() {
         const cols = Object.keys(json[0] || {});
         setRawData(json);
         setColumns(cols);
-        setSelectedKeys(cols); 
-        setFilters({}); 
-        setQuery("");
-        setPage(1);
-        setSelectedColumnStats(null); // Limpiar stats al cargar nuevos datos
+        setSelectedKeys(cols); setFilters({}); setQuery(""); setPage(1); setSelectedColumnStats(null);
     }, []);
 
     const handleFile = async (file) => {
         try {
             const data = await file.arrayBuffer();
             const wb = XLSX.read(data, { type: "array" });
-            workbookRef.current = wb; 
-            const sheets = wb.SheetNames;
-            const sheet = sheets[0];
-            setSheetNames(sheets);
-            setActiveSheet(sheet);
-            loadSheetData(wb, sheet);
+            workbookRef.current = wb; const sheets = wb.SheetNames; const sheet = sheets[0];
+            setSheetNames(sheets); setActiveSheet(sheet); loadSheetData(wb, sheet);
         } catch (error) {
             console.error("Error al cargar el archivo:", error);
             alert("Error al procesar el archivo. Asegúrate de que sea un archivo .xlsx, .xls o .csv válido.");
-            setRawData([]);
-            setColumns([]);
-            setSheetNames([]);
-            setActiveSheet("");
-            workbookRef.current = null;
+            setRawData([]); setColumns([]); setSheetNames([]); setActiveSheet(""); workbookRef.current = null;
         }
     };
 
     const handleSheetChange = (name) => {
         const wb = workbookRef.current;
-        if (wb && wb.SheetNames.includes(name)) {
-            setActiveSheet(name);
-            loadSheetData(wb, name); 
-        } else if (wb) {
-            setActiveSheet(name);
-        } else {
-            setActiveSheet(name);
-        }
+        if (wb && wb.SheetNames.includes(name)) { setActiveSheet(name); loadSheetData(wb, name); } else if (wb) { setActiveSheet(name); } else { setActiveSheet(name); }
     };
 
     useEffect(() => {
-        if (!rawData.length || !selectedKeys.length) {
-            fuseRef.current = null;
-            return;
-        }
-        const fuseOptions = {
-            keys: selectedKeys,
-            threshold: 0.35,
-            ignoreLocation: true,
-            minMatchCharLength: 2,
-            useExtendedSearch: false,
-            shouldSort: false,
-        };
+        if (!rawData.length || !selectedKeys.length) { fuseRef.current = null; return; }
+        const fuseOptions = { keys: selectedKeys, threshold: 0.35, ignoreLocation: true, minMatchCharLength: 2, useExtendedSearch: false, shouldSort: false, };
         fuseRef.current = new Fuse(rawData, fuseOptions);
     }, [rawData, selectedKeys]);
 
@@ -363,32 +286,16 @@ export default function ExcelSearchApp() {
     };
 
     const setFilterValue = (col, patch) => {
-        setFilters(prev => ({ 
-            ...prev, 
-            [col]: { 
-                mode: "contiene", 
-                value: "", 
-                ...prev[col], 
-                ...patch 
-            } 
-        }));
+        setFilters(prev => ({ ...prev, [col]: { mode: "contiene", value: "", ...prev[col], ...patch } }));
         setPage(1);
     };
 
     const clearAll = () => {
-        setQuery("");
-        setFilters({});
-        setSortKey("");
-        setSortDir("asc");
-        setPage(1);
-        setSelectedColumnStats(null); // Limpiar stats al resetear filtros
+        setQuery(""); setFilters({}); setSortKey(""); setSortDir("asc"); setPage(1); setSelectedColumnStats(null);
     };
 
-    // --- Renderizado y Estilos ---
-
-    const backgroundStyle = {
-        backgroundColor: '#e0f7fa',
-    };
+    // --- Renderizado de Contenido del Buscador ---
+    const backgroundStyle = { backgroundColor: '#e0f7fa', };
 
     return (
         <div style={backgroundStyle} className="min-h-screen w-full text-neutral-900 p-6">
@@ -409,12 +316,7 @@ export default function ExcelSearchApp() {
                             {sheetNames.length > 1 && (
                                 <div className="mt-3">
                                     <label className="text-xs font-semibold mr-2">Hoja activa:</label>
-                                    <select
-                                        value={activeSheet}
-                                        onChange={(e) => handleSheetChange(e.target.value)}
-                                        className="border rounded-lg px-2 py-1 text-sm"
-                                        disabled={!workbookRef.current}
-                                    >
+                                    <select value={activeSheet} onChange={(e) => handleSheetChange(e.target.value)} className="border rounded-lg px-2 py-1 text-sm" disabled={!workbookRef.current}>
                                         {sheetNames.map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
@@ -423,24 +325,12 @@ export default function ExcelSearchApp() {
 
                         <div className="bg-white rounded-2xl shadow p-4">
                             <label className="block text-sm font-medium mb-2">Búsqueda global (difusa)</label>
-                            <input
-                                type="text"
-                                value={query}
-                                onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-                                placeholder="Escribe aquí para buscar en las columnas seleccionadas..."
-                                className="w-full border rounded-lg px-3 py-2 focus:outline-none"
-                                disabled={!rawData.length}
-                            />
+                            <input type="text" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Escribe aquí para buscar en las columnas seleccionadas..." className="w-full border rounded-lg px-3 py-2 focus:outline-none" disabled={!rawData.length} />
                             <div className="mt-3">
                                 <p className="text-xs font-semibold mb-1">Columnas incluidas en la búsqueda difusa</p>
                                 <div className="flex flex-wrap gap-2 max-h-32 overflow-auto border p-1 rounded-lg">
                                     {columns.map(k => (
-                                        <button
-                                            key={k}
-                                            onClick={() => toggleKey(k)}
-                                            className={`text-xs px-2 py-1 rounded-full border transition-colors ${selectedKeys.includes(k) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white hover:bg-neutral-100"}`}
-                                            disabled={!rawData.length}
-                                        >{k}</button>
+                                        <button key={k} onClick={() => toggleKey(k)} className={`text-xs px-2 py-1 rounded-full border transition-colors ${selectedKeys.includes(k) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white hover:bg-neutral-100"}`} disabled={!rawData.length}>{k}</button>
                                     ))}
                                 </div>
                             </div>
@@ -453,21 +343,14 @@ export default function ExcelSearchApp() {
                             <div className="flex items-center justify-between gap-4 flex-wrap pb-4 border-b">
                                 <div className="flex items-center gap-3">
                                     <button onClick={clearAll} className="text-sm border rounded-lg px-3 py-2 hover:bg-red-50 hover:text-red-700 transition-colors">Limpiar Filtros/Búsqueda</button>
-                                    <button 
-                                        onClick={() => downloadCSV("resultados_filtrados.csv", processed)} 
-                                        className="text-sm border rounded-lg px-3 py-2 bg-green-500 text-white hover:bg-green-600 transition-colors font-medium"
-                                    >
+                                    <button onClick={() => downloadCSV("resultados_filtrados.csv", processed)} className="text-sm border rounded-lg px-3 py-2 bg-green-500 text-white hover:bg-green-600 transition-colors font-medium">
                                         Descargar {total.toLocaleString()} Resultados
                                     </button>
                                     <button onClick={() => downloadCSV("pagina_actual.csv", visible)} className="text-sm border rounded-lg px-3 py-2 hover:bg-neutral-100 transition-colors">Descargar Página Actual</button>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <label className="text-sm font-medium whitespace-nowrap">Filas por página</label>
-                                    <select 
-                                        value={pageSize} 
-                                        onChange={(e)=>{ setPageSize(Number(e.target.value)); setPage(1); }} 
-                                        className="border rounded-lg px-2 py-1 text-sm"
-                                    >
+                                    <select value={pageSize} onChange={(e)=>{ setPageSize(Number(e.target.value)); setPage(1); }} className="border rounded-lg px-2 py-1 text-sm">
                                         {[25,50,100,250,500].map(n => <option key={n} value={n}>{n}</option>)}
                                     </select>
                                 </div>
@@ -477,44 +360,21 @@ export default function ExcelSearchApp() {
                                 {columns.map(col => {
                                     const cfg = filters[col] || {};
                                     const isNum = numericColumns.has(col);
-                                    
                                     return (
                                         <div key={col} className="border rounded-xl p-3 bg-neutral-50 shadow-sm">
                                             <div className="text-xs font-semibold mb-2 truncate text-indigo-700" title={col}>{col}</div>
                                             {isNum ? (
                                                 <div className="flex gap-2 items-center">
-                                                    <input 
-                                                        type="number" 
-                                                        value={cfg.min ?? ""} 
-                                                        onChange={(e)=> setFilterValue(col, { min: e.target.value === "" ? undefined : Number(e.target.value), value: undefined, mode: undefined })} 
-                                                        placeholder="Mínimo" 
-                                                        className="w-1/2 border rounded-lg px-2 py-1 text-sm" 
-                                                    />
-                                                    <input 
-                                                        type="number" 
-                                                        value={cfg.max ?? ""} 
-                                                        onChange={(e)=> setFilterValue(col, { max: e.target.value === "" ? undefined : Number(e.target.value), value: undefined, mode: undefined })} 
-                                                        placeholder="Máximo" 
-                                                        className="w-1/2 border rounded-lg px-2 py-1 text-sm" 
-                                                    />
+                                                    <input type="number" value={cfg.min ?? ""} onChange={(e)=> setFilterValue(col, { min: e.target.value === "" ? undefined : Number(e.target.value), value: undefined, mode: undefined })} placeholder="Mínimo" className="w-1/2 border rounded-lg px-2 py-1 text-sm" />
+                                                    <input type="number" value={cfg.max ?? ""} onChange={(e)=> setFilterValue(col, { max: e.target.value === "" ? undefined : Number(e.target.value), value: undefined, mode: undefined })} placeholder="Máximo" className="w-1/2 border rounded-lg px-2 py-1 text-sm" />
                                                 </div>
                                             ) : (
                                                 <div className="flex gap-2 items-center">
-                                                    <select 
-                                                        value={cfg.mode ?? "contiene"} 
-                                                        onChange={(e)=> setFilterValue(col, { mode: /** @type {FilterMode} */ (e.target.value) })} 
-                                                        className="border rounded-lg px-2 py-1 text-sm w-1/3"
-                                                    >
+                                                    <select value={cfg.mode ?? "contiene"} onChange={(e)=> setFilterValue(col, { mode: /** @type {FilterMode} */ (e.target.value) })} className="border rounded-lg px-2 py-1 text-sm w-1/3">
                                                         <option value="contiene">Contiene</option>
                                                         <option value="=">Igual a</option>
                                                     </select>
-                                                    <input 
-                                                        type="text" 
-                                                        value={cfg.value ?? ""} 
-                                                        onChange={(e)=> setFilterValue(col, { value: e.target.value, min: undefined, max: undefined })} 
-                                                        placeholder="Texto a buscar..." 
-                                                        className="flex-1 border rounded-lg px-2 py-1 text-sm" 
-                                                    />
+                                                    <input type="text" value={cfg.value ?? ""} onChange={(e)=> setFilterValue(col, { value: e.target.value, min: undefined, max: undefined })} placeholder="Texto a buscar..." className="flex-1 border rounded-lg px-2 py-1 text-sm" />
                                                 </div>
                                             )}
                                         </div>
@@ -534,15 +394,10 @@ export default function ExcelSearchApp() {
                                         <tr>
                                             {columns.map(col => (
                                                 <th key={col} className="text-left px-3 py-2 whitespace-nowrap">
-                                                    <button
-                                                        className="font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-700 transition-colors"
-                                                        onClick={() => handleColumnHeaderClick(col)} // LLAMADA AL NUEVO HANDLER
-                                                        title="Clic para Ordenar y Ver Estadísticas de Columna"
-                                                    >
+                                                    <button className="font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-700 transition-colors" onClick={() => handleColumnHeaderClick(col)} title="Clic para Ordenar y Ver Estadísticas de Columna">
                                                         {col} 
                                                         <span className="text-xs">
-                                                            {sortKey === col ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                                                            {/* Ícono de Stats */}
+                                                            {sortKey === col ? (sortDir === "asc" ? "desc" : "asc") : ""}
                                                             {selectedColumnStats?.column === col && <span className="text-xs text-yellow-500"> ★</span>} 
                                                         </span>
                                                     </button>
@@ -628,6 +483,75 @@ export default function ExcelSearchApp() {
     );
 }
 
+// =====================================================================
+// === WRAPPER PRINCIPAL CON SEGURIDAD (AppWrapper) =====================
+// =====================================================================
+
+export default function AppWrapper() {
+    // NUEVO ESTADO: Controla si el usuario tiene acceso
+    const [isLoggedIn, setIsLoggedIn] = useState(false); 
+    
+    // Si no está logeado, muestra la Puerta de Acceso (LOGIN GATE)
+    if (!isLoggedIn) {
+        return <LoginGate onSuccess={() => setIsLoggedIn(true)} />;
+    }
+
+    // SI ESTÁ LOGEADO, MUESTRA EL CONTENIDO PRINCIPAL DEL BUSCADOR
+    return <BuscadorContent />;
+}
+
+
+// --- 4. Componente: Puerta de Acceso (LoginGate) ---
+
+const CORRECT_CODE = "Plas#2025"; // 🚨 ¡LA CONTRASEÑA SOLICITADA!
+
+function LoginGate({ onSuccess }) {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState(false);
+    
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        setError(false);
+        // Compara el password ingresado con el código secreto
+        if (password === CORRECT_CODE) { 
+            onSuccess(); // Permite el acceso
+        } else {
+            setError(true);
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+            <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-sm text-center">
+                <h2 className="text-2xl font-bold mb-4 text-indigo-700">Acceso Restringido</h2>
+                <p className="text-sm text-gray-600 mb-6">Introduce el código para acceder al Buscador de Datos.</p>
+                <form onSubmit={handleSubmit}>
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={`w-full p-3 border rounded-lg focus:ring-indigo-500 focus:border-indigo-500 ${error ? 'border-red-500' : 'border-gray-300'}`}
+                        placeholder="Código Secreto"
+                        required
+                    />
+                    {error && (
+                        <p className="text-red-500 text-xs mt-2">Código incorrecto. ¡Acceso denegado!</p>
+                    )}
+                    <button
+                        type="submit"
+                        className="mt-6 w-full bg-indigo-600 text-white p-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+                    >
+                        Acceder
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+
+// --- Componentes Auxiliares (FileDrop, Modal, Stats Panel) ---
+
 // Componente FileDrop (Auxiliar)
 function FileDrop({ onFile }) {
     const [drag, setDrag] = useState(false);
@@ -664,23 +588,16 @@ function FileDrop({ onFile }) {
     );
 }
 
-
-// --- 2. Componente: Modal de Detalle de Empresa ---
+// Componente: Modal de Detalle de Empresa
 /**
  * @param {{ data: CompanyAggregates, onClose: () => void }} props
  */
 function CompanyDetailModal({ data, onClose }) {
     const { company, totalValue, totalWeight, isFiltered } = data;
 
-    // Función para formatear moneda y peso
     const formatCurrency = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(num);
     const formatWeight = (num) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(num) + ' KG';
-    const formatPricePerKg = (num) => new Intl.NumberFormat('en-US', { 
-        style: 'currency', 
-        currency: 'USD', 
-        minimumFractionDigits: 2, 
-        maximumFractionDigits: 4 
-    }).format(num);
+    const formatPricePerKg = (num) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(num);
 
     let pricePerKg = 0;
     if (totalWeight > 0) {
@@ -690,64 +607,42 @@ function CompanyDetailModal({ data, onClose }) {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative">
-                <button 
-                    onClick={onClose} 
-                    className="absolute top-4 right-4 text-neutral-500 hover:text-neutral-900 text-2xl"
-                >
-                    &times;
-                </button>
-
+                <button onClick={onClose} className="absolute top-4 right-4 text-neutral-500 hover:text-neutral-900 text-2xl">&times;</button>
                 <h2 className="text-xl font-bold text-indigo-700 mb-4 border-b pb-2">Análisis Global de Empresa</h2>
                 <h3 className="text-2xl font-semibold mb-6">{company}</h3>
 
-                {/* Resumen de Totales */}
                 <div className="grid grid-cols-2 gap-4 text-center mb-6">
                     <div className="bg-indigo-50 p-4 rounded-lg">
                         <p className="text-sm font-medium text-indigo-700">Valor Total (USD)</p>
-                        <p className="text-3xl font-bold text-indigo-900 mt-1">
-                            {formatCurrency(totalValue)}
-                        </p>
+                        <p className="text-3xl font-bold text-indigo-900 mt-1">{formatCurrency(totalValue)}</p>
                     </div>
                     <div className="bg-green-50 p-4 rounded-lg">
                         <p className="text-sm font-medium text-green-700">Peso Total (KG)</p>
-                        <p className="text-3xl font-bold text-green-900 mt-1">
-                            {formatWeight(totalWeight)}
-                        </p>
+                        <p className="text-3xl font-bold text-green-900 mt-1">{formatWeight(totalWeight)}</p>
                     </div>
                 </div>
 
-                {/* SECCIÓN DEL VALOR POR KG */}
                 <div className="mt-4 text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <h4 className="text-lg font-bold text-yellow-800 mb-1">
-                        VALOR POR KILOGRAMO (PRECIO / KG)
-                    </h4>
-                    <p className="text-4xl font-extrabold text-yellow-900">
-                        {formatPricePerKg(pricePerKg)}
-                    </p>
-                    <p className="text-xs text-neutral-600 mt-1">
-                        Cálculo: {formatCurrency(totalValue)} / {totalWeight.toLocaleString()} KG
-                    </p>
+                    <h4 className="text-lg font-bold text-yellow-800 mb-1">VALOR POR KILOGRAMO (PRECIO / KG)</h4>
+                    <p className="text-4xl font-extrabold text-yellow-900">{formatPricePerKg(pricePerKg)}</p>
+                    <p className="text-xs text-neutral-600 mt-1">Cálculo: {formatCurrency(totalValue)} / {totalWeight.toLocaleString()} KG</p>
                 </div>
 
                 <p className="text-xs text-neutral-500 mt-4 text-center">
                     **Nota:** Este cálculo es **{isFiltered ? 'FILTRADO' : 'GLOBAL'}**. 
-                    {isFiltered 
-                        ? 'Refleja solo las filas visibles en la tabla principal (con filtros y búsqueda aplicados).'
-                        : 'Refleja el 100% de los datos cargados.'
-                    }
+                    {isFiltered ? 'Refleja solo las filas visibles en la tabla principal (con filtros y búsqueda aplicados).' : 'Refleja el 100% de los datos cargados.'}
                 </p>
             </div>
         </div>
     );
 }
 
-// --- 3. Nuevo Componente: Panel de Estadísticas de Columna ---
+// Componente: Panel de Estadísticas de Columna
 /**
  * @param {{ stats: ColumnStats, onClose: () => void }} props
  */
 function ColumnStatsPanel({ stats, onClose }) {
     
-    // Función de formato (para ser más legible)
     const formatNumber = (num, isCurrency = false) => {
         if (typeof num !== 'number') return '-';
         if (isCurrency) {
@@ -757,7 +652,7 @@ function ColumnStatsPanel({ stats, onClose }) {
     };
 
     const isNum = stats.isNumeric;
-    const isCurrency = stats.column.includes('Valor (USD)'); // Heurística simple
+    const isCurrency = stats.column.includes('Valor (USD)');
 
     return (
         <div className="bg-white/90 rounded-2xl shadow-2xl p-6 h-full sticky top-6">
@@ -765,12 +660,7 @@ function ColumnStatsPanel({ stats, onClose }) {
                 <h2 className="text-xl font-bold text-indigo-700">
                     Análisis: <span className="font-extrabold block text-2xl text-neutral-900 truncate" title={stats.column}>{stats.column}</span>
                 </h2>
-                <button 
-                    onClick={onClose} 
-                    className="text-neutral-500 hover:text-neutral-900 text-2xl ml-4 p-1"
-                >
-                    &times;
-                </button>
+                <button onClick={onClose} className="text-neutral-500 hover:text-neutral-900 text-2xl ml-4 p-1">&times;</button>
             </div>
 
             <div className="text-sm">
@@ -779,7 +669,6 @@ function ColumnStatsPanel({ stats, onClose }) {
                 </p>
 
                 {isNum ? (
-                    // Estadísticas Numéricas
                     <div className="space-y-3">
                         {
                             /** @type {NumericStats} */
@@ -810,7 +699,6 @@ function ColumnStatsPanel({ stats, onClose }) {
                         </div>
                     </div>
                 ) : (
-                    // Estadísticas Categóricas
                     <div className="space-y-4">
                         <StatBox title="Valores Únicos" value={(/** @type {CategoricalStats} */ (stats)).uniqueCount.toLocaleString()} color="bg-yellow-50" size="text-2xl" />
                         
